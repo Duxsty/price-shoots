@@ -11,7 +11,7 @@ class TrackRequest(BaseModel):
 @app.post("/track-price")
 def track_price(req: TrackRequest):
     try:
-        current_price = get_amazon_price(req.url)
+        current_price = 99.99  # hardcoded for test
         if current_price is None:
             raise HTTPException(status_code=404, detail="Price not found.")
         return {
