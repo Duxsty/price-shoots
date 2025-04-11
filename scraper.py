@@ -60,11 +60,10 @@ def scrape_currys_price(url):
             return float(price_text)
 
         if __name__ == "__main__":
-        test_url = "https://www.currys.co.uk/products/samsung-galaxy-book3-360-13.3-2-in-1-laptop-intel-core-i5-256-gb-ssd-graphite-10247201.html"
-        print(scrape_price(test_url))
+            test_url = "https://www.currys.co.uk/..."
+            print(get_price(test_url))
 
-
-    except Exception as e:
+       except Exception as e:
         print(f"[ERROR scraping Currys] {e}")
         return None
 
