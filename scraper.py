@@ -2,85 +2,58 @@ import requests
 from bs4 import BeautifulSoup
 
 headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept-Language": "en-GB,en;q=0.9"
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    )
 }
 
-SCRAPINGBEE_API_KEY = 'ABC123456789xyz'  # Replace with your actual key
-
-def get_price(url):
-    if "currys.co.uk" in url:
-        return scrape_currys_price(url)
-    elif "amazon." in url:
-        return scrape_amazon_price_with_scrapingbee(url)
+def get_price(url: str):
+    print(f"🌐 Fetching URL: {url}")
 
     try:
         response = requests.get(url, headers=headers, timeout=10)
+        print(f"📡 Response status: {response.status_code}")
+
+        if response.status_code != 200:
+            print(f"⚠️ Non-200 response: {response.status_code}")
+            return None
+
         soup = BeautifulSoup(response.content, "html.parser")
 
-        if "ebay." in url:
-            price = (
-                soup.select_one(".x-price-approx__value") or
-                soup.select_one(".notranslate")
-            )
-        else:
-            price = soup.find("span", string=lambda s: s and "£" in s)
+        # Try different selectors
+        selectors = [
+            {"name": "Amazon", "pattern": "span.a-price-whole"},
+            {"name": "Currys", "pattern": "div[class*=ProductPriceBlock]"},
+            {"name": "Generic Price", "pattern": "[class*=price]"},
+        ]
 
-        if price:
-            price_text = price.get_text().replace("£", "").replace(",", "").strip()
-            return float(price_text)
+        for sel in selectors:
+            print(f"🔎 Trying selector: {sel['pattern']} for {sel['name']}")
+            element = soup.select_one(sel["pattern"])
+            if element:
+                text = element.get_text(strip=True)
+                print(f"✅ Found price text: {text}")
+                price = extract_price(text)
+                if price is not None:
+                    print(f"💰 Extracted price: {price}")
+                    return price
+                else:
+                    print(f"❌ Could not extract price from: {text}")
+
+        print("❌ No valid price element found.")
+        return None
+
     except Exception as e:
-        print(f"[ERROR scraping generic site] {e}")
+        print(f"💥 Exception during scraping: {str(e)}")
+        return None
 
-    return None
-
-def scrape_currys_price(url):
-    api_url = 'https://app.scrapingbee.com/api/v1/'
-    params = {
-        'api_key': SCRAPINGBEE_API_KEY,
-        'url': url,
-        'render_js': 'true'
-    }
-
+def extract_price(text: str):
+    # Remove currency symbols, commas, etc.
+    cleaned = ''.join(c for c in text if c.isdigit() or c == '.')
     try:
-        response = requests.get(api_url, params=params, timeout=15)
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        price_tag = soup.find('p', class_='product-price_price')
-        if price_tag:
-            price_text = price_tag.get_text().replace("£", "").replace(",", "").strip()
-            return float(price_text)
-
-        fallback = soup.find("span", string=lambda s: s and "£" in s)
-        if fallback:
-            price_text = fallback.get_text().replace("£", "").replace(",", "").strip()
-            return float(price_text)
-
-    except Exception as e:
-        print(f"[ERROR scraping Currys] {e}")
-
-    return None
-
-def scrape_amazon_price_with_scrapingbee(url):
-    api_url = 'https://app.scrapingbee.com/api/v1/'
-    params = {
-        'api_key': SCRAPINGBEE_API_KEY,
-        'url': url,
-        'render_js': 'true'
-    }
-
-    try:
-        response = requests.get(api_url, params=params, timeout=15)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        price_tag = (
-            soup.select_one("#priceblock_dealprice") or
-            soup.select_one("#priceblock_ourprice") or
-            soup.select_one("span.a-price span.a-offscreen")
-        )
-        if price_tag:
-            price_text = price_tag.get_text().replace("£", "").replace(",", "").strip()
-            return float(price_text)
-    except Exception as e:
-        print(f"[ERROR scraping Amazon with ScrapingBee] {e}")
-
-    return None
+        return float(cleaned)
+    except ValueError:
+        print(f"❌ Failed to convert price: {text}")
+        return None
