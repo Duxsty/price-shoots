@@ -1,4 +1,3 @@
-
 import requests
 from bs4 import BeautifulSoup
 
@@ -32,7 +31,6 @@ def get_price(url):
             return float(price_text)
     except Exception as e:
         print(f"[ERROR scraping generic site] {e}")
-        return None
 
     return None
 
@@ -44,7 +42,6 @@ def scrape_currys_price(url):
         'render_js': 'true'
     }
 
-    
     try:
         response = requests.get(api_url, params=params, timeout=15)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -59,13 +56,8 @@ def scrape_currys_price(url):
             price_text = fallback.get_text().replace("£", "").replace(",", "").strip()
             return float(price_text)
 
-        if __name__ == "__main__":
-            test_url = "https://www.currys.co.uk/..."
-            print(get_price(test_url))
-
-       except Exception as e:
+    except Exception as e:
         print(f"[ERROR scraping Currys] {e}")
-        return None
 
     return None
 
