@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from scraper import get_amazon_price
+from scraper import get_price
 
 app = FastAPI()
 
@@ -11,12 +11,7 @@ class TrackRequest(BaseModel):
 @app.post("/track-price")
 def track_price(req: TrackRequest):
     try:
-      {
-  "current_price": 34.99,
-  "target_price": 35.00,
-  "alert": true
-}
-
+        current_price = get_price(req.url)
         if current_price is None:
             raise HTTPException(status_code=404, detail="Price not found.")
         return {
