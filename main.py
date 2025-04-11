@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from scraper import get_price
+from scraper import scrape_price
 
 app = FastAPI()
 
@@ -8,19 +8,15 @@ class TrackRequest(BaseModel):
     url: str
     target_price: float
 
-@app.get("/")
-def root():
-    return {"status": "API running!"}
-
 @app.post("/track-price")
 def track_price(data: TrackRequest):
-    current_price = get_price(data.url)
-
-    if current_price is None:
+    price = scrape_price(data.url)
+    if price is None:
         raise HTTPException(status_code=404, detail="Unable to retrieve price from the URL provided.")
-
+    
     return {
-        "current_price": current_price,
+        "url": data.url,
+        "current_price": price,
         "target_price": data.target_price,
-        "is_below_target": current_price <= data.target_price
+        "is_below_target": price <= data.target_price
     }
