@@ -9,16 +9,14 @@ class TrackRequest(BaseModel):
     target_price: float
 
 @app.post("/track-price")
-def track_price(req: TrackRequest):
-    try:
-        current_price = get_price(req.url)
-        if current_price is None:
-            raise HTTPException(status_code=404, detail="Price not found.")
-        return {
-            "url": req.url,
-            "target_price": req.target_price,
-            "current_price": current_price,
-            "alert": current_price <= req.target_price
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def track_price(data: TrackRequest):
+    price = get_price(data.url)
+
+    if price is None:
+        raise HTTPException(status_code=404, detail="Price not found.")
+
+    return {
+        "current_price": price,
+        "target_price": data.target_price,
+        "is_below_target": price <= data.target_price
+    }
