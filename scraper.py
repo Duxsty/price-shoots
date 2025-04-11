@@ -1,9 +1,3 @@
-import requests
-from bs4 import BeautifulSoup
-import re
-
-SCRAPINGBEE_API_KEY = 'ABC123456789xyz'  # Replace with your real key
-
 def scrape_currys_price(url):
     api_url = 'https://app.scrapingbee.com/api/v1/'
     params = {
@@ -13,30 +7,32 @@ def scrape_currys_price(url):
     }
 
     try:
-        response = requests.get(api_url, params=params, timeout=15)
+        response = requests.get(api_url, params=params, timeout=20)
+        html = response.text
 
-        if response.status_code != 200:
-            print("[ScrapingBee ERROR]", response.status_code, response.text)
-            return None
+        # Helpful: print preview to debug
+        with open("debug_currys.html", "w", encoding="utf-8") as f:
+            f.write(html)
 
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(html, 'html.parser')
 
-        # 1. Try exact class (this might change frequently)
+        # Primary selector (old version)
         price_tag = soup.find('p', class_='product-price_price')
+
+        # Alternate selector (based on April 2025 site structure)
+        if not price_tag:
+            price_tag = soup.select_one('[data-testid="product-price"]')
+
+        # Fallback: look for any span with a £ symbol
+        if not price_tag:
+            price_tag = soup.find("span", string=lambda s: s and "£" in s)
+
         if price_tag:
-            return float(price_tag.text.replace('£', '').replace(',', '').strip())
-
-        # 2. Try regex fallback
-        price_text = re.search(r'£\s?(\d+(?:,\d{3})*(?:\.\d{2})?)', soup.text)
-        if price_text:
-            return float(price_text.group(1).replace(',', ''))
-
-        print("[Scraper WARNING] No price matched in HTML.")
-        # Optional: save HTML for inspection
-        # with open("debug_currys.html", "w", encoding="utf-8") as f:
-        #     f.write(response.text)
+            price_text = price_tag.get_text().replace("£", "").replace(",", "").strip()
+            return float(price_text)
 
     except Exception as e:
-        print(f"[Scraper ERROR]: {e}")
+        print(f"[ERROR scraping Currys] {e}")
+        return None
 
     return None
