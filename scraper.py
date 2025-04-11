@@ -1,44 +1,8 @@
 import requests
 from bs4 import BeautifulSoup
+import re
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept-Language": "en-GB,en;q=0.9"
-}
-
-SCRAPINGBEE_API_KEY = 'ABC123456789xyz'  # Replace with your actual key
-
-def get_price(url):
-    if "currys.co.uk" in url:
-        return scrape_currys_price(url)
-
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.content, "html.parser")
-
-        if "amazon." in url:
-            price = (
-                soup.select_one("#priceblock_dealprice") or
-                soup.select_one("#priceblock_ourprice") or
-                soup.select_one("span.a-price span.a-offscreen")
-            )
-        elif "ebay." in url:
-            price = (
-                soup.select_one(".x-price-approx__value") or
-                soup.select_one(".notranslate")
-            )
-        else:
-            price = soup.find("span", string=lambda s: s and "£" in s)
-
-        if price:
-            price_text = price.get_text().replace("£", "").replace(",", "").strip()
-            return float(price_text)
-    except Exception as e:
-        print(f"[ERROR scraping generic site] {e}")
-        return None
-
-    return None
-
+SCRAPINGBEE_API_KEY = 'ABC123456789xyz'  # Replace with your real key
 
 def scrape_currys_price(url):
     api_url = 'https://app.scrapingbee.com/api/v1/'
@@ -50,38 +14,29 @@ def scrape_currys_price(url):
 
     try:
         response = requests.get(api_url, params=params, timeout=15)
+
+        if response.status_code != 200:
+            print("[ScrapingBee ERROR]", response.status_code, response.text)
+            return None
+
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Debug HTML snapshot for troubleshooting
-        with open("/tmp/currys_debug.html", "w", encoding="utf-8") as f:
-            f.write(soup.prettify())
+        # 1. Try exact class (this might change frequently)
+        price_tag = soup.find('p', class_='product-price_price')
+        if price_tag:
+            return float(price_tag.text.replace('£', '').replace(',', '').strip())
 
-        # Try known selectors first
-        selectors = [
-            ('p', 'product-price_price'),
-            ('div', 'product-price__price'),
-            ('span', 'product-price__price'),
-        ]
+        # 2. Try regex fallback
+        price_text = re.search(r'£\s?(\d+(?:,\d{3})*(?:\.\d{2})?)', soup.text)
+        if price_text:
+            return float(price_text.group(1).replace(',', ''))
 
-        for tag, class_name in selectors:
-            price_tag = soup.find(tag, class_=class_name)
-            if price_tag:
-                try:
-                    price_text = price_tag.get_text().replace("£", "").replace(",", "").strip()
-                    return float(price_text)
-                except Exception as e:
-                    print(f"[ERROR parsing Currys price text] {e}")
-
-        # Fallback: any tag with a £ sign
-        fallback = soup.find(string=lambda s: s and "£" in s)
-        if fallback:
-            try:
-                price_text = fallback.strip().replace("£", "").replace(",", "")
-                return float(price_text)
-            except Exception as e:
-                print(f"[ERROR parsing fallback price] {e}")
+        print("[Scraper WARNING] No price matched in HTML.")
+        # Optional: save HTML for inspection
+        # with open("debug_currys.html", "w", encoding="utf-8") as f:
+        #     f.write(response.text)
 
     except Exception as e:
-        print(f"[ERROR scraping Currys] {e}")
+        print(f"[Scraper ERROR]: {e}")
 
     return None
