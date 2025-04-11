@@ -44,6 +44,7 @@ def scrape_currys_price(url):
         'render_js': 'true'
     }
 
+    
     try:
         response = requests.get(api_url, params=params, timeout=15)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -57,6 +58,11 @@ def scrape_currys_price(url):
         if fallback:
             price_text = fallback.get_text().replace("£", "").replace(",", "").strip()
             return float(price_text)
+
+        if __name__ == "__main__":
+        test_url = "https://www.currys.co.uk/products/samsung-galaxy-book3-360-13.3-2-in-1-laptop-intel-core-i5-256-gb-ssd-graphite-10247201.html"
+        print(scrape_price(test_url))
+
 
     except Exception as e:
         print(f"[ERROR scraping Currys] {e}")
