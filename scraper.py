@@ -6,7 +6,7 @@ headers = {
     "Accept-Language": "en-GB,en;q=0.9"
 }
 
-SCRAPINGBEE_API_KEY = 'your_scrapingbee_api_key_here'
+SCRAPINGBEE_API_KEY = 'ABC123456789xyz'
 
 def get_price(url):
     # Use ScrapingBee only for Currys (JS-heavy)
