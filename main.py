@@ -8,6 +8,10 @@ class TrackRequest(BaseModel):
     url: str
     target_price: float
 
+@app.get("/")
+def root():
+    return {"status": "API running!"}
+
 @app.post("/track-price")
 def track_price(data: TrackRequest):
     price = get_price(data.url)
@@ -20,3 +24,4 @@ def track_price(data: TrackRequest):
         "target_price": data.target_price,
         "is_below_target": price <= data.target_price
     }
+
