@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from scraper import scrape_price
+from scraper import get_price  # ✅ Fix this line
 
 app = FastAPI()
 
@@ -10,7 +10,7 @@ class TrackRequest(BaseModel):
 
 @app.post("/track-price")
 def track_price(data: TrackRequest):
-    price = scrape_price(data.url)
+    price = get_price(data.url)  # ✅ Fix this line
     if price is None:
         raise HTTPException(status_code=404, detail="Unable to retrieve price from the URL provided.")
     
