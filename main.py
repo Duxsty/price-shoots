@@ -8,15 +8,10 @@ from bs4 import BeautifulSoup
 
 app = FastAPI()
 
-# In-memory store
+# === In-memory store ===
 tracked_items = {}
 
-# ScraperAPI setup
-SCRAPER_API_KEY = "63d85fc08b759603903edc1d015458b0"
-SCRAPER_API_URL = "https://api.scraperapi.com/"
-
 # === Models ===
-
 class TrackRequest(BaseModel):
     product_name: str
     target_price: float
@@ -30,8 +25,7 @@ class ProductResult(BaseModel):
     source: str
     link: str
 
-# === Track endpoints ===
-
+# === Track a product ===
 @app.post("/track-product")
 async def track_product(req: TrackRequest):
     item_id = str(uuid.uuid4())
@@ -45,6 +39,7 @@ async def track_product(req: TrackRequest):
     }
     return {"id": item_id, "message": "Tracking started successfully."}
 
+# === Get tracked products ===
 @app.get("/tracked-products")
 async def get_tracked_products(email: EmailStr = Query(...)):
     results = [
@@ -56,6 +51,7 @@ async def get_tracked_products(email: EmailStr = Query(...)):
         raise HTTPException(status_code=404, detail="No tracked products found.")
     return results
 
+# === Delete a tracked product ===
 @app.delete("/delete-product/{product_id}")
 async def delete_product(product_id: str):
     if product_id in tracked_items:
@@ -64,6 +60,8 @@ async def delete_product(product_id: str):
     raise HTTPException(status_code=404, detail="Product not found")
 
 # === Price search endpoint ===
+SCRAPER_API_KEY = "your-real-key-here"
+SCRAPER_API_URL = "https://api.scraperapi.com/"
 
 @app.get("/search-prices", response_model=List[ProductResult])
 async def search_prices(q: str = Query(..., description="Product name")):
@@ -71,10 +69,10 @@ async def search_prices(q: str = Query(..., description="Product name")):
         search_url = f"https://www.currys.co.uk/search?q={q}"
         payload = {
             "api_key": SCRAPER_API_KEY,
-            "url": search_url
+            "url": search_url,
+            "render": "true"  # <-- Enable JavaScript rendering
         }
         r = requests.get(SCRAPER_API_URL, params=payload)
-        print("HTML response from Currys:\n", r.text[:1000])  # Just print first 1000 chars
         soup = BeautifulSoup(r.text, "html.parser")
 
         results = []
@@ -83,23 +81,21 @@ async def search_prices(q: str = Query(..., description="Product name")):
             price_el = item.select_one(".ProductCard-price")
             link_el = item.select_one("a.ProductCard-link")
 
-            if not all([name_el, price_el, link_el]):
+            if not name_el or not price_el or not link_el:
                 continue
 
-            name = name_el.get_text(strip=True)
-            price_text = price_el.get_text(strip=True).replace("£", "").replace(",", "")
             try:
-                price = float(price_text)
-            except ValueError:
+                name = name_el.get_text(strip=True)
+                price = float(price_el.get_text(strip=True).replace("£", "").replace(",", ""))
+                link = "https://www.currys.co.uk" + link_el.get("href")
+                results.append({
+                    "product_name": name,
+                    "price": price,
+                    "source": "Currys",
+                    "link": link
+                })
+            except Exception:
                 continue
-
-            link = "https://www.currys.co.uk" + link_el["href"]
-            results.append({
-                "product_name": name,
-                "price": price,
-                "source": "Currys",
-                "link": link
-            })
 
         return results
 
