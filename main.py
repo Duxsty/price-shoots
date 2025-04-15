@@ -8,8 +8,10 @@ from bs4 import BeautifulSoup
 import os
 from dotenv import load_dotenv
 
+# Load secrets from .env file or Render environment
 load_dotenv()
 
+# === FastAPI App ===
 app = FastAPI()
 
 # === In-memory store ===
@@ -81,37 +83,39 @@ async def search_prices(q: str = Query(..., description="Product name")):
             "api_key": SCRAPER_API_KEY,
             "url": search_url
         }
-        r = requests.get(SCRAPER_API_URL, params=payload)
 
+        r = requests.get(SCRAPER_API_URL, params=payload)
         soup = BeautifulSoup(r.text, "html.parser")
         results = []
 
-        for item in soup.select("article[data-component='ProductCard']"):
-            name_el = item.select_one("h2[data-component='ProductCardTitle']")
-            price_el = item.select_one("div[data-component='ProductPrice']")
-            link_el = item.select_one("a[href]")
+        for item in soup.select('[data-testid="product-tile"]'):
+            name_el = item.select_one('[data-testid="product-title"]')
+            price_el = item.select_one('[data-testid="product-price"]')
+            link_el = item.select_one('a')
 
             if name_el and price_el and link_el:
                 try:
-                    price = float(
+                    clean_price = float(
                         price_el.get_text(strip=True)
-                        .replace("£", "")
-                        .replace(",", "")
-                        .split()[0]
+                            .replace("£", "")
+                            .replace(",", "")
+                            .split()[0]
                     )
-                except ValueError:
+                    results.append({
+                        "product_name": name_el.get_text(strip=True),
+                        "price": clean_price,
+                        "source": "Currys",
+                        "link": "https://www.currys.co.uk" + link_el["href"]
+                    })
+                except Exception:
                     continue
-
-                results.append({
-                    "product_name": name_el.get_text(strip=True),
-                    "price": price,
-                    "source": "Currys",
-                    "link": f"https://www.currys.co.uk{link_el['href']}"
-                })
 
         return results
 
-    return fetch_currys()
+    try:
+        return fetch_currys()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
 
 # === GPT Product Summary ===
 @app.get("/product-summary", response_model=SummaryResult)
