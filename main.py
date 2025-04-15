@@ -84,26 +84,33 @@ async def search_prices(q: str = Query(..., description="Product name")):
             "url": search_url
         }
         r = requests.get(SCRAPER_API_URL, params=payload)
+
+        print("SCRAPERAPI HTML PREVIEW =====>")
+        print(r.text[:1000])  # Log first 1000 chars to debug
+
         soup = BeautifulSoup(r.text, "html.parser")
         results = []
 
-        product_cards = soup.find_all("li", class_="product")
-        for item in product_cards:
-            name_el = item.find("h2")
-            price_el = item.select_one(".productPrice_price .sr-only, .productPrice_price")
-            link_el = item.find("a", href=True)
+        for item in soup.select('[data-testid="product-tile"]'):
+            name_el = item.select_one('[data-testid="product-title"]')
+            price_el = item.select_one('[data-testid="product-price"]')
+            link_el = item.select_one('a')
 
             if name_el and price_el and link_el:
                 try:
-                    price = float(price_el.get_text(strip=True).replace("£", "").replace(",", ""))
                     results.append({
                         "product_name": name_el.get_text(strip=True),
-                        "price": price,
+                        "price": float(
+                            price_el.get_text(strip=True)
+                                .replace("£", "")
+                                .replace(",", "")
+                                .split()[0]
+                        ),
                         "source": "Currys",
                         "link": "https://www.currys.co.uk" + link_el["href"]
                     })
-                except Exception:
-                    continue
+                except Exception as e:
+                    print("Error parsing item:", e)
 
         return results
 
