@@ -5,11 +5,23 @@ from datetime import datetime
 import uuid
 import requests
 from bs4 import BeautifulSoup
+import os
+from dotenv import load_dotenv
 
+# Load secrets from .env file
+load_dotenv()
+
+# === FastAPI App ===
 app = FastAPI()
 
 # === In-memory store ===
 tracked_items = {}
+
+# === Config ===
+SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
+SCRAPER_API_URL = "https://api.scraperapi.com/"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
 # === Models ===
 class TrackRequest(BaseModel):
@@ -24,6 +36,9 @@ class ProductResult(BaseModel):
     price: float
     source: str
     link: str
+
+class SummaryResult(BaseModel):
+    summary: str
 
 # === Track a product ===
 @app.post("/track-product")
@@ -60,9 +75,6 @@ async def delete_product(product_id: str):
     raise HTTPException(status_code=404, detail="Product not found")
 
 # === Price search endpoint ===
-SCRAPER_API_KEY = "your-real-key-here"
-SCRAPER_API_URL = "https://api.scraperapi.com/"
-
 @app.get("/search-prices", response_model=List[ProductResult])
 async def search_prices(q: str = Query(..., description="Product name")):
     def fetch_currys():
@@ -72,10 +84,6 @@ async def search_prices(q: str = Query(..., description="Product name")):
             "url": search_url
         }
         r = requests.get(SCRAPER_API_URL, params=payload)
-
-        # TEMP: Debug output
-        print("=== CURRYS RAW HTML SAMPLE ===")
-        print(r.text[:3000])  # print first 3000 characters only
 
         soup = BeautifulSoup(r.text, "html.parser")
         results = []
@@ -100,3 +108,29 @@ async def search_prices(q: str = Query(..., description="Product name")):
         return results
 
     return fetch_currys()
+
+# === GPT Product Summary ===
+@app.get("/product-summary", response_model=SummaryResult)
+async def product_summary(q: str = Query(..., description="Product name")):
+    prompt = f"Write a short product description for: {q}\nKeep it simple and informative."
+
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    body = {
+        "model": "gpt-4",
+        "messages": [
+            {"role": "system", "content": "You are a helpful product assistant."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7
+    }
+
+    r = requests.post(OPENAI_API_URL, headers=headers, json=body)
+    r.raise_for_status()
+    data = r.json()
+    summary = data["choices"][0]["message"]["content"]
+
+    return {"summary": summary}
