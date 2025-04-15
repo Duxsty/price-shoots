@@ -87,23 +87,24 @@ async def search_prices(q: str = Query(..., description="Product name")):
         soup = BeautifulSoup(r.text, "html.parser")
         results = []
 
-        for item in soup.select('[data-testid="product-tile"]'):
-            name_el = item.select_one('[data-testid="product-title"]')
-            price_el = item.select_one('[data-testid="product-price"]')
-            link_el = item.select_one('a')
+        product_cards = soup.find_all("li", class_="product")
+        for item in product_cards:
+            name_el = item.find("h2")
+            price_el = item.select_one(".productPrice_price .sr-only, .productPrice_price")
+            link_el = item.find("a", href=True)
 
             if name_el and price_el and link_el:
                 try:
-                    price_text = price_el.get_text(strip=True).replace("£", "").replace(",", "").split()[0]
-                    price_value = float(price_text)
-                except ValueError:
+                    price = float(price_el.get_text(strip=True).replace("£", "").replace(",", ""))
+                    results.append({
+                        "product_name": name_el.get_text(strip=True),
+                        "price": price,
+                        "source": "Currys",
+                        "link": "https://www.currys.co.uk" + link_el["href"]
+                    })
+                except Exception:
                     continue
-                results.append({
-                    "product_name": name_el.get_text(strip=True),
-                    "price": price_value,
-                    "source": "Currys",
-                    "link": "https://www.currys.co.uk" + link_el["href"]
-                })
+
         return results
 
     return fetch_currys()
@@ -127,11 +128,9 @@ async def product_summary(q: str = Query(..., description="Product name")):
         "temperature": 0.7
     }
 
-    try:
-        r = requests.post(OPENAI_API_URL, headers=headers, json=body)
-        r.raise_for_status()
-        data = r.json()
-        summary = data["choices"][0]["message"]["content"]
-        return {"summary": summary}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch summary: {str(e)}")
+    r = requests.post(OPENAI_API_URL, headers=headers, json=body)
+    r.raise_for_status()
+    data = r.json()
+    summary = data["choices"][0]["message"]["content"]
+
+    return {"summary": summary}
