@@ -1,11 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, EmailStr
-from typing import Literal
+from typing import Literal, List
 from datetime import datetime
 import uuid
 
 app = FastAPI()
 
+# In-memory store (for testing/demo)
 tracked_items = {}
 
 class TrackRequest(BaseModel):
@@ -27,3 +28,14 @@ async def track_product(req: TrackRequest):
         "created_at": datetime.utcnow().isoformat()
     }
     return {"id": item_id, "message": "Tracking started successfully."}
+
+@app.get("/tracked-products")
+async def get_tracked_products(email: EmailStr = Query(...)):
+    # Filter items by email
+    results = [
+        item for item in tracked_items.values()
+        if item["email"] == email
+    ]
+    if not results:
+        raise HTTPException(status_code=404, detail="No tracked products found.")
+    return results
