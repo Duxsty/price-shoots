@@ -11,8 +11,11 @@ app = FastAPI()
 # In-memory store
 tracked_items = {}
 
+# ScraperAPI setup
 SCRAPER_API_KEY = "63d85fc08b759603903edc1d015458b0"
 SCRAPER_API_URL = "https://api.scraperapi.com/"
+
+# === Models ===
 
 class TrackRequest(BaseModel):
     product_name: str
@@ -26,6 +29,8 @@ class ProductResult(BaseModel):
     price: float
     source: str
     link: str
+
+# === Track endpoints ===
 
 @app.post("/track-product")
 async def track_product(req: TrackRequest):
@@ -58,13 +63,15 @@ async def delete_product(product_id: str):
         return {"message": "Product deleted successfully."}
     raise HTTPException(status_code=404, detail="Product not found")
 
+# === Price search endpoint ===
+
 @app.get("/search-prices", response_model=List[ProductResult])
-async def search_prices(q: str = Query(..., description="Product name to search")):
+async def search_prices(q: str = Query(..., description="Product name")):
     def fetch_currys():
         search_url = f"https://www.currys.co.uk/search?q={q}"
         payload = {
             "api_key": SCRAPER_API_KEY,
-            "url": search_url,
+            "url": search_url
         }
         r = requests.get(SCRAPER_API_URL, params=payload)
         soup = BeautifulSoup(r.text, "html.parser")
@@ -75,16 +82,24 @@ async def search_prices(q: str = Query(..., description="Product name to search"
             price_el = item.select_one(".ProductCard-price")
             link_el = item.select_one("a.ProductCard-link")
 
-            if name_el and price_el and link_el:
-                name = name_el.get_text(strip=True)
-                price = float(price_el.get_text(strip=True).replace("£", "").replace(",", ""))
-                link = f"https://www.currys.co.uk{link_el['href']}"
-                results.append(ProductResult(
-                    product_name=name,
-                    price=price,
-                    source="Currys",
-                    link=link
-                ))
+            if not all([name_el, price_el, link_el]):
+                continue
+
+            name = name_el.get_text(strip=True)
+            price_text = price_el.get_text(strip=True).replace("£", "").replace(",", "")
+            try:
+                price = float(price_text)
+            except ValueError:
+                continue
+
+            link = "https://www.currys.co.uk" + link_el["href"]
+            results.append({
+                "product_name": name,
+                "price": price,
+                "source": "Currys",
+                "link": link
+            })
+
         return results
 
     return fetch_currys()
