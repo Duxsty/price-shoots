@@ -74,6 +74,7 @@ async def search_prices(q: str = Query(..., description="Product name")):
             "url": search_url
         }
         r = requests.get(SCRAPER_API_URL, params=payload)
+        print("HTML response from Currys:\n", r.text[:1000])  # Just print first 1000 chars
         soup = BeautifulSoup(r.text, "html.parser")
 
         results = []
