@@ -8,10 +8,9 @@ from bs4 import BeautifulSoup
 import os
 from dotenv import load_dotenv
 
-# Load secrets from .env file or Render environment
+# Load secrets from .env file if running locally
 load_dotenv()
 
-# === FastAPI App ===
 app = FastAPI()
 
 # === In-memory store ===
@@ -83,39 +82,46 @@ async def search_prices(q: str = Query(..., description="Product name")):
             "api_key": SCRAPER_API_KEY,
             "url": search_url
         }
+        try:
+            r = requests.get(SCRAPER_API_URL, params=payload, timeout=20)
+            r.raise_for_status()
 
-        r = requests.get(SCRAPER_API_URL, params=payload)
-        soup = BeautifulSoup(r.text, "html.parser")
-        results = []
+            print("SCRAPERAPI HTML PREVIEW =====>")
+            print(r.text[:2000])  # Preview part of the response
 
-        for item in soup.select('[data-testid="product-tile"]'):
-            name_el = item.select_one('[data-testid="product-title"]')
-            price_el = item.select_one('[data-testid="product-price"]')
-            link_el = item.select_one('a')
+            soup = BeautifulSoup(r.text, "html.parser")
+            results = []
 
-            if name_el and price_el and link_el:
-                try:
-                    clean_price = float(
-                        price_el.get_text(strip=True)
-                            .replace("£", "")
-                            .replace(",", "")
-                            .split()[0]
-                    )
+            for item in soup.select('[data-testid="product-tile"]'):
+                name_el = item.select_one('[data-testid="product-title"]')
+                price_el = item.select_one('[data-testid="product-price"]')
+                link_el = item.find('a', href=True)
+
+                if name_el and price_el and link_el:
+                    price_text = price_el.get_text(strip=True).replace("£", "").replace(",", "")
+                    try:
+                        price = float(price_text.split()[0])
+                    except Exception as parse_error:
+                        print(f"Price parsing failed for {price_text}: {parse_error}")
+                        continue
+
                     results.append({
                         "product_name": name_el.get_text(strip=True),
-                        "price": clean_price,
+                        "price": price,
                         "source": "Currys",
-                        "link": "https://www.currys.co.uk" + link_el["href"]
+                        "link": "https://www.currys.co.uk" + link_el['href']
                     })
-                except Exception:
-                    continue
 
-        return results
+            if not results:
+                raise Exception("No results matched parsing rules.")
 
-    try:
-        return fetch_currys()
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
+            return results
+
+        except Exception as e:
+            print("ERROR in fetch_currys():", str(e))
+            raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
+
+    return fetch_currys()
 
 # === GPT Product Summary ===
 @app.get("/product-summary", response_model=SummaryResult)
@@ -136,9 +142,12 @@ async def product_summary(q: str = Query(..., description="Product name")):
         "temperature": 0.7
     }
 
-    r = requests.post(OPENAI_API_URL, headers=headers, json=body)
-    r.raise_for_status()
-    data = r.json()
-    summary = data["choices"][0]["message"]["content"]
-
-    return {"summary": summary}
+    try:
+        r = requests.post(OPENAI_API_URL, headers=headers, json=body, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        summary = data["choices"][0]["message"]["content"]
+        return {"summary": summary}
+    except Exception as e:
+        print("GPT Summary Error:", str(e))
+        raise HTTPException(status_code=500, detail="Failed to generate summary.")
