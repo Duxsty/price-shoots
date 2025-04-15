@@ -1,12 +1,12 @@
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, EmailStr
-from typing import Literal, List
+from typing import Literal
 from datetime import datetime
 import uuid
 
 app = FastAPI()
 
-# In-memory store (for testing/demo)
+# In-memory store
 tracked_items = {}
 
 class TrackRequest(BaseModel):
@@ -31,11 +31,18 @@ async def track_product(req: TrackRequest):
 
 @app.get("/tracked-products")
 async def get_tracked_products(email: EmailStr = Query(...)):
-    # Filter items by email
     results = [
-        item for item in tracked_items.values()
+        {"id": item_id, **item}
+        for item_id, item in tracked_items.items()
         if item["email"] == email
     ]
     if not results:
         raise HTTPException(status_code=404, detail="No tracked products found.")
     return results
+
+@app.delete("/delete-product/{product_id}")
+async def delete_product(product_id: str):
+    if product_id in tracked_items:
+        del tracked_items[product_id]
+        return {"message": "Product deleted successfully."}
+    raise HTTPException(status_code=404, detail="Product not found")
