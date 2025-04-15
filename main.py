@@ -8,10 +8,8 @@ from bs4 import BeautifulSoup
 import os
 from dotenv import load_dotenv
 
-# Load secrets from .env file
 load_dotenv()
 
-# === FastAPI App ===
 app = FastAPI()
 
 # === In-memory store ===
@@ -85,32 +83,31 @@ async def search_prices(q: str = Query(..., description="Product name")):
         }
         r = requests.get(SCRAPER_API_URL, params=payload)
 
-        print("SCRAPERAPI HTML PREVIEW =====>")
-        print(r.text[:1000])  # Log first 1000 chars to debug
-
         soup = BeautifulSoup(r.text, "html.parser")
         results = []
 
-        for item in soup.select('[data-testid="product-tile"]'):
-            name_el = item.select_one('[data-testid="product-title"]')
-            price_el = item.select_one('[data-testid="product-price"]')
-            link_el = item.select_one('a')
+        for item in soup.select("article[data-component='ProductCard']"):
+            name_el = item.select_one("h2[data-component='ProductCardTitle']")
+            price_el = item.select_one("div[data-component='ProductPrice']")
+            link_el = item.select_one("a[href]")
 
             if name_el and price_el and link_el:
                 try:
-                    results.append({
-                        "product_name": name_el.get_text(strip=True),
-                        "price": float(
-                            price_el.get_text(strip=True)
-                                .replace("£", "")
-                                .replace(",", "")
-                                .split()[0]
-                        ),
-                        "source": "Currys",
-                        "link": "https://www.currys.co.uk" + link_el["href"]
-                    })
-                except Exception as e:
-                    print("Error parsing item:", e)
+                    price = float(
+                        price_el.get_text(strip=True)
+                        .replace("£", "")
+                        .replace(",", "")
+                        .split()[0]
+                    )
+                except ValueError:
+                    continue
+
+                results.append({
+                    "product_name": name_el.get_text(strip=True),
+                    "price": price,
+                    "source": "Currys",
+                    "link": f"https://www.currys.co.uk{link_el['href']}"
+                })
 
         return results
 
