@@ -84,7 +84,6 @@ async def search_prices(q: str = Query(..., description="Product name")):
             "url": search_url
         }
         r = requests.get(SCRAPER_API_URL, params=payload)
-
         soup = BeautifulSoup(r.text, "html.parser")
         results = []
 
@@ -94,14 +93,14 @@ async def search_prices(q: str = Query(..., description="Product name")):
             link_el = item.select_one('a')
 
             if name_el and price_el and link_el:
+                try:
+                    price_text = price_el.get_text(strip=True).replace("£", "").replace(",", "").split()[0]
+                    price_value = float(price_text)
+                except ValueError:
+                    continue
                 results.append({
                     "product_name": name_el.get_text(strip=True),
-                    "price": float(
-                        price_el.get_text(strip=True)
-                            .replace("£", "")
-                            .replace(",", "")
-                            .split()[0]
-                    ),
+                    "price": price_value,
                     "source": "Currys",
                     "link": "https://www.currys.co.uk" + link_el["href"]
                 })
@@ -128,9 +127,11 @@ async def product_summary(q: str = Query(..., description="Product name")):
         "temperature": 0.7
     }
 
-    r = requests.post(OPENAI_API_URL, headers=headers, json=body)
-    r.raise_for_status()
-    data = r.json()
-    summary = data["choices"][0]["message"]["content"]
-
-    return {"summary": summary}
+    try:
+        r = requests.post(OPENAI_API_URL, headers=headers, json=body)
+        r.raise_for_status()
+        data = r.json()
+        summary = data["choices"][0]["message"]["content"]
+        return {"summary": summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch summary: {str(e)}")
