@@ -69,34 +69,34 @@ async def search_prices(q: str = Query(..., description="Product name")):
         search_url = f"https://www.currys.co.uk/search?q={q}"
         payload = {
             "api_key": SCRAPER_API_KEY,
-            "url": search_url,
-            "render": "true"  # <-- Enable JavaScript rendering
+            "url": search_url
         }
         r = requests.get(SCRAPER_API_URL, params=payload)
+
+        # TEMP: Debug output
+        print("=== CURRYS RAW HTML SAMPLE ===")
+        print(r.text[:3000])  # print first 3000 characters only
+
         soup = BeautifulSoup(r.text, "html.parser")
-
         results = []
-        for item in soup.select(".ProductCard"):
-            name_el = item.select_one(".ProductCard-title")
-            price_el = item.select_one(".ProductCard-price")
-            link_el = item.select_one("a.ProductCard-link")
 
-            if not name_el or not price_el or not link_el:
-                continue
+        for item in soup.select('[data-testid="product-tile"]'):
+            name_el = item.select_one('[data-testid="product-title"]')
+            price_el = item.select_one('[data-testid="product-price"]')
+            link_el = item.select_one('a')
 
-            try:
-                name = name_el.get_text(strip=True)
-                price = float(price_el.get_text(strip=True).replace("£", "").replace(",", ""))
-                link = "https://www.currys.co.uk" + link_el.get("href")
+            if name_el and price_el and link_el:
                 results.append({
-                    "product_name": name,
-                    "price": price,
+                    "product_name": name_el.get_text(strip=True),
+                    "price": float(
+                        price_el.get_text(strip=True)
+                            .replace("£", "")
+                            .replace(",", "")
+                            .split()[0]
+                    ),
                     "source": "Currys",
-                    "link": link
+                    "link": "https://www.currys.co.uk" + link_el["href"]
                 })
-            except Exception:
-                continue
-
         return results
 
     return fetch_currys()
