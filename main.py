@@ -9,11 +9,9 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
 app = FastAPI()
 
 tracked_items = {}
-
 SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
 SCRAPER_API_URL = "https://api.scraperapi.com/"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -31,9 +29,6 @@ class ProductResult(BaseModel):
     price: float
     source: str
     link: str
-
-class SummaryResult(BaseModel):
-    summary: str
 
 @app.post("/track-product")
 async def track_product(req: TrackRequest):
@@ -67,71 +62,103 @@ async def delete_product(product_id: str):
     raise HTTPException(status_code=404, detail="Product not found")
 
 @app.get("/search-prices", response_model=List[ProductResult])
-async def search_prices(q: str = Query(..., description="Product name")):
-    try:
-        search_url = f"https://www.currys.co.uk/search?q={q}"
-        payload = {"api_key": SCRAPER_API_KEY, "url": search_url}
-        r = requests.get(SCRAPER_API_URL, params=payload, timeout=20)
-        r.raise_for_status()
+async def search_prices(q: str = Query(...)):
+    def scrape(site_name, url, parser_func):
+        try:
+            res = requests.get(SCRAPER_API_URL, params={"api_key": SCRAPER_API_KEY, "url": url}, timeout=25)
+            res.raise_for_status()
+            return parser_func(res.text)
+        except Exception as e:
+            print(f"Error scraping {site_name}: {e}")
+            return []
 
-        soup = BeautifulSoup(r.text, "html.parser")
-        results = []
-
-        # Try multiple selectors for flexibility
-        product_blocks = soup.select('[data-testid="product-tile"]')
-        if not product_blocks:
-            product_blocks = soup.select(".product, .product-card")
-
-        for item in product_blocks:
-            name_el = item.select_one('[data-testid="product-title"], h2, .product-title')
-            price_el = item.select_one('[data-testid="product-price"], .product-price, span.price')
-            link_el = item.find("a", href=True)
-
-            if name_el and price_el and link_el:
+    def parse_currys(html):
+        soup = BeautifulSoup(html, "html.parser")
+        products = []
+        for item in soup.select('[data-testid="product-tile"]'):
+            title = item.select_one('[data-testid="product-title"]')
+            price_el = item.select_one('[data-testid="product-price"]')
+            link = item.find('a', href=True)
+            if title and price_el and link:
                 try:
-                    price = float(
-                        price_el.get_text(strip=True)
-                            .replace("\u00a3", "")
-                            .replace("£", "")
-                            .replace(",", "")
-                            .split()[0]
-                    )
-                    results.append({
-                        "product_name": name_el.get_text(strip=True),
+                    price = float(price_el.text.strip().replace("£", "").split()[0])
+                    products.append({
+                        "product_name": title.text.strip(),
                         "price": price,
                         "source": "Currys",
-                        "link": "https://www.currys.co.uk" + link_el.get("href", "")
+                        "link": "https://www.currys.co.uk" + link['href']
                     })
-                except Exception as e:
-                    print(f"Price parse error: {e}")
+                except:
+                    continue
+        return products
 
-        return results  # Return empty list if none found (no crash)
+    def parse_amazon(html):
+        soup = BeautifulSoup(html, "html.parser")
+        products = []
+        for item in soup.select(".s-result-item"):
+            title = item.select_one("h2")
+            price_whole = item.select_one(".a-price-whole")
+            price_frac = item.select_one(".a-price-fraction")
+            link = item.select_one("a.a-link-normal", href=True)
+            if title and price_whole and link:
+                try:
+                    price = float(f"{price_whole.text.strip()}.{price_frac.text.strip() if price_frac else '00'}")
+                    products.append({
+                        "product_name": title.text.strip(),
+                        "price": price,
+                        "source": "Amazon",
+                        "link": "https://www.amazon.co.uk" + link["href"]
+                    })
+                except:
+                    continue
+        return products
 
-    except Exception as e:
-        print("ERROR in fetch_currys():", str(e))
-        return []
+    def parse_argos(html):
+        soup = BeautifulSoup(html, "html.parser")
+        products = []
+        for item in soup.select(".ProductCardstyles__Title-sc-1fgptbz-11"):
+            title = item.text.strip()
+            parent = item.find_parent("a", href=True)
+            price_el = parent.find_next("div", class_="ProductCardstyles__PriceLabel-sc-1fgptbz-16")
+            if price_el and parent:
+                try:
+                    price = float(price_el.text.strip().replace("£", "").split()[0])
+                    products.append({
+                        "product_name": title,
+                        "price": price,
+                        "source": "Argos",
+                        "link": "https://www.argos.co.uk" + parent['href']
+                    })
+                except:
+                    continue
+        return products
 
-@app.get("/product-summary", response_model=SummaryResult)
-async def product_summary(q: str = Query(..., description="Product name")):
-    prompt = f"Write a short product description for: {q}\nKeep it simple and informative."
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    body = {
-        "model": "gpt-4",
-        "messages": [
-            {"role": "system", "content": "You are a helpful product assistant."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.7
-    }
-    try:
-        r = requests.post(OPENAI_API_URL, headers=headers, json=body, timeout=20)
-        r.raise_for_status()
-        data = r.json()
-        summary = data["choices"][0]["message"]["content"]
-        return {"summary": summary}
-    except Exception as e:
-        print("GPT Summary Error:", str(e))
-        raise HTTPException(status_code=500, detail="Failed to generate summary.")
+    def parse_johnlewis(html):
+        soup = BeautifulSoup(html, "html.parser")
+        products = []
+        for item in soup.select("li.product-card"):
+            title = item.select_one(".product-card__title")
+            price_el = item.select_one(".product-price")
+            link = item.select_one("a", href=True)
+            if title and price_el and link:
+                try:
+                    price = float(price_el.text.strip().replace("£", "").split()[0])
+                    products.append({
+                        "product_name": title.text.strip(),
+                        "price": price,
+                        "source": "John Lewis",
+                        "link": "https://www.johnlewis.com" + link['href']
+                    })
+                except:
+                    continue
+        return products
+
+    results = []
+    results += scrape("Currys", f"https://www.currys.co.uk/search?q={q}", parse_currys)
+    results += scrape("Amazon", f"https://www.amazon.co.uk/s?k={q}", parse_amazon)
+    results += scrape("Argos", f"https://www.argos.co.uk/search/{q}", parse_argos)
+    results += scrape("John Lewis", f"https://www.johnlewis.com/search?q={q}", parse_johnlewis)
+
+    if not results:
+        raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
+    return results
