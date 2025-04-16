@@ -8,21 +8,17 @@ from bs4 import BeautifulSoup
 import os
 from dotenv import load_dotenv
 
-# Load secrets from .env file (for local dev)
 load_dotenv()
 
 app = FastAPI()
 
-# === In-memory store ===
 tracked_items = {}
 
-# === Config ===
 SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
 SCRAPER_API_URL = "https://api.scraperapi.com/"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
-# === Models ===
 class TrackRequest(BaseModel):
     product_name: str
     target_price: float
@@ -38,8 +34,6 @@ class ProductResult(BaseModel):
 
 class SummaryResult(BaseModel):
     summary: str
-
-# === Routes ===
 
 @app.post("/track-product")
 async def track_product(req: TrackRequest):
@@ -83,8 +77,12 @@ async def search_prices(q: str = Query(..., description="Product name")):
         soup = BeautifulSoup(r.text, "html.parser")
         results = []
 
-        product_tiles = soup.select('[data-testid="product-tile"]') or soup.select(".product")
-        for item in product_tiles:
+        # Try multiple selectors for flexibility
+        product_blocks = soup.select('[data-testid="product-tile"]')
+        if not product_blocks:
+            product_blocks = soup.select(".product, .product-card")
+
+        for item in product_blocks:
             name_el = item.select_one('[data-testid="product-title"], h2, .product-title')
             price_el = item.select_one('[data-testid="product-price"], .product-price, span.price')
             link_el = item.find("a", href=True)
@@ -93,29 +91,25 @@ async def search_prices(q: str = Query(..., description="Product name")):
                 try:
                     price = float(
                         price_el.get_text(strip=True)
-                            .replace("\u00a3", "")  # remove pound sign
+                            .replace("\u00a3", "")
+                            .replace("£", "")
                             .replace(",", "")
                             .split()[0]
                     )
+                    results.append({
+                        "product_name": name_el.get_text(strip=True),
+                        "price": price,
+                        "source": "Currys",
+                        "link": "https://www.currys.co.uk" + link_el.get("href", "")
+                    })
                 except Exception as e:
                     print(f"Price parse error: {e}")
-                    continue
 
-                results.append({
-                    "product_name": name_el.get_text(strip=True),
-                    "price": price,
-                    "source": "Currys",
-                    "link": "https://www.currys.co.uk" + link_el["href"]
-                })
-
-        if not results:
-            raise Exception("No results matched parsing rules.")
-
-        return results
+        return results  # Return empty list if none found (no crash)
 
     except Exception as e:
         print("ERROR in fetch_currys():", str(e))
-        raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
+        return []
 
 @app.get("/product-summary", response_model=SummaryResult)
 async def product_summary(q: str = Query(..., description="Product name")):
