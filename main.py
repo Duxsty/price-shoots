@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 import os
 from dotenv import load_dotenv
 
-# Load secrets from .env file if running locally
+# Load secrets from .env file (for local dev)
 load_dotenv()
 
 app = FastAPI()
@@ -39,7 +39,8 @@ class ProductResult(BaseModel):
 class SummaryResult(BaseModel):
     summary: str
 
-# === Track a product ===
+# === Routes ===
+
 @app.post("/track-product")
 async def track_product(req: TrackRequest):
     item_id = str(uuid.uuid4())
@@ -53,7 +54,6 @@ async def track_product(req: TrackRequest):
     }
     return {"id": item_id, "message": "Tracking started successfully."}
 
-# === Get tracked products ===
 @app.get("/tracked-products")
 async def get_tracked_products(email: EmailStr = Query(...)):
     results = [
@@ -65,7 +65,6 @@ async def get_tracked_products(email: EmailStr = Query(...)):
         raise HTTPException(status_code=404, detail="No tracked products found.")
     return results
 
-# === Delete a tracked product ===
 @app.delete("/delete-product/{product_id}")
 async def delete_product(product_id: str):
     if product_id in tracked_items:
@@ -73,66 +72,58 @@ async def delete_product(product_id: str):
         return {"message": "Product deleted successfully."}
     raise HTTPException(status_code=404, detail="Product not found")
 
-# === Price search endpoint ===
 @app.get("/search-prices", response_model=List[ProductResult])
 async def search_prices(q: str = Query(..., description="Product name")):
-    def fetch_currys():
+    try:
         search_url = f"https://www.currys.co.uk/search?q={q}"
-        payload = {
-            "api_key": SCRAPER_API_KEY,
-            "url": search_url
-        }
-        try:
-            r = requests.get(SCRAPER_API_URL, params=payload, timeout=20)
-            r.raise_for_status()
+        payload = {"api_key": SCRAPER_API_KEY, "url": search_url}
+        r = requests.get(SCRAPER_API_URL, params=payload, timeout=20)
+        r.raise_for_status()
 
-            print("SCRAPERAPI HTML PREVIEW =====>")
-            print(r.text[:2000])  # Preview part of the response
+        soup = BeautifulSoup(r.text, "html.parser")
+        results = []
 
-            soup = BeautifulSoup(r.text, "html.parser")
-            results = []
+        product_tiles = soup.select('[data-testid="product-tile"]') or soup.select(".product")
+        for item in product_tiles:
+            name_el = item.select_one('[data-testid="product-title"], h2, .product-title')
+            price_el = item.select_one('[data-testid="product-price"], .product-price, span.price')
+            link_el = item.find("a", href=True)
 
-            for item in soup.select('[data-testid="product-tile"]'):
-                name_el = item.select_one('[data-testid="product-title"]')
-                price_el = item.select_one('[data-testid="product-price"]')
-                link_el = item.find('a', href=True)
+            if name_el and price_el and link_el:
+                try:
+                    price = float(
+                        price_el.get_text(strip=True)
+                            .replace("\u00a3", "")  # remove pound sign
+                            .replace(",", "")
+                            .split()[0]
+                    )
+                except Exception as e:
+                    print(f"Price parse error: {e}")
+                    continue
 
-                if name_el and price_el and link_el:
-                    price_text = price_el.get_text(strip=True).replace("£", "").replace(",", "")
-                    try:
-                        price = float(price_text.split()[0])
-                    except Exception as parse_error:
-                        print(f"Price parsing failed for {price_text}: {parse_error}")
-                        continue
+                results.append({
+                    "product_name": name_el.get_text(strip=True),
+                    "price": price,
+                    "source": "Currys",
+                    "link": "https://www.currys.co.uk" + link_el["href"]
+                })
 
-                    results.append({
-                        "product_name": name_el.get_text(strip=True),
-                        "price": price,
-                        "source": "Currys",
-                        "link": "https://www.currys.co.uk" + link_el['href']
-                    })
+        if not results:
+            raise Exception("No results matched parsing rules.")
 
-            if not results:
-                raise Exception("No results matched parsing rules.")
+        return results
 
-            return results
+    except Exception as e:
+        print("ERROR in fetch_currys():", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
 
-        except Exception as e:
-            print("ERROR in fetch_currys():", str(e))
-            raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
-
-    return fetch_currys()
-
-# === GPT Product Summary ===
 @app.get("/product-summary", response_model=SummaryResult)
 async def product_summary(q: str = Query(..., description="Product name")):
     prompt = f"Write a short product description for: {q}\nKeep it simple and informative."
-
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json"
     }
-
     body = {
         "model": "gpt-4",
         "messages": [
@@ -141,7 +132,6 @@ async def product_summary(q: str = Query(..., description="Product name")):
         ],
         "temperature": 0.7
     }
-
     try:
         r = requests.post(OPENAI_API_URL, headers=headers, json=body, timeout=20)
         r.raise_for_status()
