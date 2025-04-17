@@ -68,26 +68,31 @@ async def delete_product(product_id: str):
 # === TEMP: Return mock search results ===
 @app.get("/search-prices", response_model=List[ProductResult])
 async def search_prices(q: str = Query(..., description="Product name")):
-    return [
-        {
-            "product_name": "AirPods Pro (2nd Gen)",
-            "price": 219.99,
-            "source": "Amazon",
-            "link": "https://www.amazon.co.uk/dp/B0BDJ8VQWL"
-        },
-        {
-            "product_name": "AirPods Pro from Currys",
-            "price": 229.00,
-            "source": "Currys",
-            "link": "https://www.currys.co.uk/products/apple-airpods-pro-2nd-gen"
-        },
-        {
-            "product_name": "AirPods Pro (Refurbished)",
-            "price": 189.99,
-            "source": "Argos",
-            "link": "https://www.argos.co.uk/product/12345678"
-        }
-    ]
+    q_normalized = q.strip().lower()
+
+    if "airpods" in q_normalized:
+        return [
+            {
+                "product_name": "AirPods Pro (2nd Gen)",
+                "price": 219.99,
+                "source": "Amazon",
+                "link": "https://www.amazon.co.uk/dp/B0BDJ8VQWL"
+            },
+            {
+                "product_name": "AirPods Pro from Currys",
+                "price": 229.00,
+                "source": "Currys",
+                "link": "https://www.currys.co.uk/products/apple-airpods-pro-2nd-gen"
+            },
+            {
+                "product_name": "AirPods Pro (Refurbished)",
+                "price": 189.99,
+                "source": "Argos",
+                "link": "https://www.argos.co.uk/product/12345678"
+            }
+        ]
+
+    raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
 
 # === GPT Summary Endpoint (Optional) ===
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
