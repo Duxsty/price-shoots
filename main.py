@@ -4,7 +4,6 @@ from typing import Literal, List
 from datetime import datetime
 import uuid
 import requests
-from bs4 import BeautifulSoup
 import os
 from dotenv import load_dotenv
 
@@ -91,12 +90,15 @@ async def search_prices(q: str = Query(..., description="Product name")):
 
         for item in data.get("shopping_results", []):
             title = item.get("title")
-            price_str = item.get("price", "0").replace("\u00a3", "").replace(",", "")
             link = item.get("link")
             source = item.get("source", "Unknown")
+            price_str = item.get("price")
+
+            if not price_str:
+                continue
 
             try:
-                price = float(price_str.split()[0])
+                price = float(price_str.replace("£", "").replace(",", "").strip())
                 results.append({
                     "product_name": title,
                     "price": price,
@@ -107,7 +109,7 @@ async def search_prices(q: str = Query(..., description="Product name")):
                 print(f"Error parsing price: {parse_err}")
 
         if not results:
-            raise Exception("No results matched parsing rules.")
+            raise HTTPException(status_code=404, detail="No results found.")
 
         return results
 
