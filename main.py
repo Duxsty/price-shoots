@@ -3,23 +3,16 @@ from pydantic import BaseModel, EmailStr
 from typing import Literal, List
 from datetime import datetime
 import uuid
-import requests
 import os
 from dotenv import load_dotenv
 
-# Load secrets from .env file if running locally
+# Load environment variables
 load_dotenv()
 
 app = FastAPI()
 
 # === In-memory store ===
 tracked_items = {}
-
-# === Config ===
-SERPAPI_KEY = os.getenv("SERPAPI_API_KEY")
-SERPAPI_URL = "https://serpapi.com/search.json"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
 # === Models ===
 class TrackRequest(BaseModel):
@@ -72,52 +65,34 @@ async def delete_product(product_id: str):
         return {"message": "Product deleted successfully."}
     raise HTTPException(status_code=404, detail="Product not found")
 
-# === Price search endpoint ===
+# === TEMP: Return mock search results ===
 @app.get("/search-prices", response_model=List[ProductResult])
 async def search_prices(q: str = Query(..., description="Product name")):
-    try:
-        params = {
-            "engine": "google_shopping",
-            "q": q,
-            "gl": "uk",
-            "hl": "en",
-            "api_key": SERPAPI_KEY
+    return [
+        {
+            "product_name": "AirPods Pro (2nd Gen)",
+            "price": 219.99,
+            "source": "Amazon",
+            "link": "https://www.amazon.co.uk/dp/B0BDJ8VQWL"
+        },
+        {
+            "product_name": "AirPods Pro from Currys",
+            "price": 229.00,
+            "source": "Currys",
+            "link": "https://www.currys.co.uk/products/apple-airpods-pro-2nd-gen"
+        },
+        {
+            "product_name": "AirPods Pro (Refurbished)",
+            "price": 189.99,
+            "source": "Argos",
+            "link": "https://www.argos.co.uk/product/12345678"
         }
-        res = requests.get(SERPAPI_URL, params=params, timeout=20)
-        res.raise_for_status()
-        data = res.json()
-        results = []
+    ]
 
-        for item in data.get("shopping_results", []):
-            title = item.get("title")
-            link = item.get("link")
-            source = item.get("source", "Unknown")
-            price_str = item.get("price")
+# === GPT Summary Endpoint (Optional) ===
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
-            if not price_str:
-                continue
-
-            try:
-                price = float(price_str.replace("£", "").replace(",", "").strip())
-                results.append({
-                    "product_name": title,
-                    "price": price,
-                    "source": source,
-                    "link": link
-                })
-            except Exception as parse_err:
-                print(f"Error parsing price: {parse_err}")
-
-        if not results:
-            raise HTTPException(status_code=404, detail="No results found.")
-
-        return results
-
-    except Exception as e:
-        print("ERROR in search_prices():", str(e))
-        raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
-
-# === GPT Product Summary ===
 @app.get("/product-summary", response_model=SummaryResult)
 async def product_summary(q: str = Query(..., description="Product name")):
     prompt = f"Write a short product description for: {q}\nKeep it simple and informative."
@@ -137,6 +112,7 @@ async def product_summary(q: str = Query(..., description="Product name")):
     }
 
     try:
+        import requests
         r = requests.post(OPENAI_API_URL, headers=headers, json=body, timeout=20)
         r.raise_for_status()
         data = r.json()
