@@ -21,17 +21,24 @@ async def scrape_argos_playwright(query: str) -> List[ProductResult]:
         await page.goto(search_url, timeout=60000)
 
         try:
-            # ✅ Wait until product cards are actually rendered
-            await page.wait_for_selector("[data-test='component-product-card']", timeout=15000)
+            # Wait for the general product list container instead of individual cards
+            await page.wait_for_selector("[data-test='product-list']", timeout=15000)
         except Exception:
-            print("⚠️ Timeout waiting for product cards to load.")
+            print("⚠️ Timeout: Product list did not load.")
             await browser.close()
             return []
 
-        # ✅ More stable selector
-        product_cards = await page.query_selector_all("[data-test='component-product-card']")
+        # Take a screenshot for debugging (stored in the backend container)
+        await page.screenshot(path="argos_page.png", full_page=True)
 
-        for card in product_cards:
+        # Try multiple valid selectors
+        cards = await page.query_selector_all(
+            "li[data-test='component-product-card'], div[data-test='component-product-card']"
+        )
+
+        print(f"🔎 Found {len(cards)} product cards")
+
+        for card in cards:
             try:
                 title_el = await card.query_selector("h2 span[data-test='product-title']")
                 price_el = await card.query_selector("strong[data-test='product-price']")
@@ -56,10 +63,3 @@ async def scrape_argos_playwright(query: str) -> List[ProductResult]:
 
         await browser.close()
     return results
-
-# For local testing
-if __name__ == "__main__":
-    query = "Lenovo IdeaPad 3 15.6in i5 8GB 256GB Laptop M365 Bundle"
-    results = asyncio.run(scrape_argos_playwright(query))
-    for r in results:
-        print(r.model_dump())
