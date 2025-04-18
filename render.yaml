@@ -1,13 +1,9 @@
-
 services:
   - type: web
-    name: price-tracker-api
+    name: price-shoots
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main_combined_scraper_debug_argos:app --host 0.0.0.0 --port 10000
-    envVars:
-      - key: PORT
-        value: 10000
-      - key: SCRAPER_API_KEY
-        value: your_scraperapi_key_here
+    buildCommand: |
+      pip install -r requirements.txt
+      playwright install
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
