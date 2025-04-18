@@ -1,58 +1,69 @@
+
 import asyncio
 from playwright.async_api import async_playwright
 from typing import List
 from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
 
-class ProductResult(BaseModel):
+router = APIRouter()
+
+class PriceSpyResult(BaseModel):
     product_name: str
     price: float
+    source: str
     link: str
     image: str
-    source: str = "Argos"
 
-async def scrape_argos_playwright(query: str) -> List[ProductResult]:
+async def scrape_pricespy(query: str) -> List[PriceSpyResult]:
     results = []
+    url = f"https://www.pricespy.co.uk/search?search={query.replace(' ', '+')}"
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-
-        search_url = f"https://www.argos.co.uk/search/{query.replace(' ', '%20')}/"
-        print(f"Navigating to: {search_url}")
-        await page.goto(search_url, timeout=60000)
+        await page.goto(url, timeout=60000)
 
         try:
-            await page.wait_for_selector('[data-test="component-product-card"]', timeout=15000)
-        except Exception as e:
-            print(f"Selector wait failed: {e}")
+            await page.wait_for_selector(".SearchResults__grid___3oKZp", timeout=15000)
+        except:
             await browser.close()
-            return results
+            return []
 
-        cards = await page.query_selector_all('[data-test="component-product-card"]')
-        print(f"Found {len(cards)} product cards")
+        products = await page.query_selector_all("div[data-test='product-card']")
 
-        for card in cards:
+        for product in products:
             try:
-                title_el = await card.query_selector("h2 span[data-test='product-title']")
-                price_el = await card.query_selector("strong[data-test='product-price']")
-                link_el = await card.query_selector("a[data-test='component-product-card-title']")
-                image_el = await card.query_selector("img")
+                title_el = await product.query_selector("a[data-test='product-link']")
+                price_el = await product.query_selector("[data-test='product-price']")
+                image_el = await product.query_selector("img")
 
-                title = await title_el.inner_text() if title_el else "Unnamed"
-                price_raw = await price_el.inner_text() if price_el else "0"
+                name = await title_el.inner_text() if title_el else "Unnamed"
+                price_raw = await price_el.inner_text() if price_el else "£0"
                 price = float(''.join(filter(str.isdigit, price_raw))) / 100 if price_raw else 0.0
-                link = "https://www.argos.co.uk" + await link_el.get_attribute("href") if link_el else ""
+                link = "https://www.pricespy.co.uk" + await title_el.get_attribute("href") if title_el else ""
                 image = await image_el.get_attribute("src") if image_el else ""
 
-                results.append(ProductResult(
-                    product_name=title.strip(),
+                results.append(PriceSpyResult(
+                    product_name=name.strip(),
                     price=price,
+                    source="PriceSpy",
                     link=link,
                     image=image
                 ))
             except Exception as e:
-                print(f"❌ Error parsing product card: {e}")
+                print(f"Error parsing product: {e}")
                 continue
 
         await browser.close()
     return results
+
+@router.get("/search-pricespy", response_model=List[PriceSpyResult])
+async def search_pricespy(q: str = Query(...)):
+    try:
+        data = await scrape_pricespy(q)
+        if not data:
+            raise HTTPException(status_code=404, detail="No PriceSpy results found")
+        return data
+    except Exception as e:
+        print(f"❌ Exception in /search-pricespy: {e}")
+        raise HTTPException(status_code=500, detail="Search failed")
