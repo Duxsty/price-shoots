@@ -1,4 +1,5 @@
-
+from fastapi import Request
+from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
@@ -90,3 +91,9 @@ async def search_prices(q: str = Query(...)):
     except Exception as e:
         print(f"❌ Exception: {e}")
         raise HTTPException(status_code=500, detail="Scraping failed")
+
+@app.get("/pricespy-url")
+async def pricespy_redirect(q: str):
+    base = "https://www.pricespy.co.uk/search?search="
+    redirect_url = base + quote(q)
+    return {"url": redirect_url}
