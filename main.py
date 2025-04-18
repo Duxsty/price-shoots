@@ -2,12 +2,14 @@
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
+from bs4 import BeautifulSoup
+from urllib.parse import quote
 import requests
 import os
 
 app = FastAPI()
 
-SERP_API_KEY = "29394e61566756e5badb6ae7b58ff789a1652ac4e2dbc03a5fda1d102a802a60"
+SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
 
 class ProductResult(BaseModel):
     product_name: str
@@ -19,35 +21,41 @@ class ProductResult(BaseModel):
 
 @app.get("/search-prices", response_model=List[ProductResult])
 async def search_prices(q: str = Query(...)):
-    params = {
-        "api_key": SERP_API_KEY,
-        "engine": "amazon_uk",
-        "amazon_domain": "amazon.co.uk",
-        "type": "search",
-        "search_term": q
-    }
-    res = requests.get("https://serpapi.com/search.json", params=params)
+    encoded_query = quote(q)
+    target_url = f"https://www.currys.co.uk/search?q={encoded_query}"
+    api_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={target_url}"
 
-    if res.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to fetch from SerpAPI")
+    try:
+        res = requests.get(api_url, headers={"User-Agent": "Mozilla/5.0"})
+        if res.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to fetch from ScraperAPI")
 
-    data = res.json()
-    results = []
+        soup = BeautifulSoup(res.text, "html.parser")
+        items = []
 
-    for product in data.get("organic_results", []):
-        try:
-            results.append({
-                "product_name": product.get("title", "Unnamed"),
-                "price": float(product.get("price", {}).get("value", 0)),
-                "source": "Amazon",
-                "link": product.get("link", ""),
-                "image": product.get("thumbnail", ""),
-                "rating": float(product.get("rating", 0)) if product.get("rating") else None
-            })
-        except Exception as e:
-            continue
+        for product in soup.select("li.product"):
+            name = product.select_one("h2.product-title")
+            price_el = product.select_one(".product-price")
+            link_el = product.select_one("a")
+            image_el = product.select_one("img")
 
-    if not results:
-        raise HTTPException(status_code=404, detail="No products found")
+            if name and price_el and link_el:
+                raw_price = ''.join(filter(str.isdigit, price_el.get_text()))
+                price = float(raw_price[:-2]) if len(raw_price) >= 3 else 0
 
-    return results
+                items.append({
+                    "product_name": name.get_text(strip=True),
+                    "price": price,
+                    "link": f"https://www.currys.co.uk{link_el['href']}",
+                    "source": "Currys",
+                    "image": image_el['src'] if image_el and image_el.has_attr('src') else "",
+                    "rating": None
+                })
+
+        if not items:
+            raise HTTPException(status_code=404, detail="No products found")
+
+        return items
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
