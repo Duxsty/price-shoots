@@ -1,4 +1,3 @@
-
 import asyncio
 from playwright.async_api import async_playwright
 from typing import List
@@ -21,8 +20,16 @@ async def scrape_argos_playwright(query: str) -> List[ProductResult]:
         search_url = f"https://www.argos.co.uk/search/{query.replace(' ', '%20')}/"
         await page.goto(search_url, timeout=60000)
 
-        await page.wait_for_selector("li[data-test='component-product-card']", timeout=15000)
-        product_cards = await page.query_selector_all("li[data-test='component-product-card']")
+        try:
+            # ✅ Wait until product cards are actually rendered
+            await page.wait_for_selector("[data-test='component-product-card']", timeout=15000)
+        except Exception:
+            print("⚠️ Timeout waiting for product cards to load.")
+            await browser.close()
+            return []
+
+        # ✅ More stable selector
+        product_cards = await page.query_selector_all("[data-test='component-product-card']")
 
         for card in product_cards:
             try:
@@ -44,13 +51,13 @@ async def scrape_argos_playwright(query: str) -> List[ProductResult]:
                     image=image
                 ))
             except Exception as e:
-                print(f"Error parsing card: {e}")
+                print(f"❌ Error parsing card: {e}")
                 continue
 
         await browser.close()
     return results
 
-# Example usage:
+# For local testing
 if __name__ == "__main__":
     query = "Lenovo IdeaPad 3 15.6in i5 8GB 256GB Laptop M365 Bundle"
     results = asyncio.run(scrape_argos_playwright(query))
