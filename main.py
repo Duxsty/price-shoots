@@ -76,3 +76,17 @@ async def search_prices(q: str = Query(...)):
     except Exception as e:
         print(f"❌ Exception during search: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
+
+from playwright_scraper_argos import scrape_argos_playwright
+
+@app.get("/search-prices", response_model=List[ProductResult])
+async def search_prices(q: str = Query(...)):
+    try:
+        currys = []  # temporarily skip Currys
+        argos = await scrape_argos_playwright(q)
+        if not argos:
+            raise HTTPException(status_code=404, detail="No products found")
+        return argos
+    except Exception as e:
+        print(f"❌ Exception: {e}")
+        raise HTTPException(status_code=500, detail="Scraping failed")
