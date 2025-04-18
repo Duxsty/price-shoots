@@ -28,12 +28,16 @@ async def search_prices(q: str = Query(...)):
     try:
         res = requests.get(api_url, headers={"User-Agent": "Mozilla/5.0"})
         if res.status_code != 200:
+            print(f"ScraperAPI error: {res.status_code} - {res.text[:500]}")
             raise HTTPException(status_code=500, detail="Failed to fetch from ScraperAPI")
 
         soup = BeautifulSoup(res.text, "html.parser")
+        product_elements = soup.select("li.product")
+        print(f"🔍 Found {len(product_elements)} product items")
+
         items = []
 
-        for product in soup.select("li.product"):
+        for product in product_elements:
             name = product.select_one("h2.product-title")
             price_el = product.select_one(".product-price")
             link_el = product.select_one("a")
@@ -53,9 +57,11 @@ async def search_prices(q: str = Query(...)):
                 })
 
         if not items:
+            print("⚠️ No valid product data extracted.")
             raise HTTPException(status_code=404, detail="No products found")
 
         return items
 
     except Exception as e:
+        print(f"❌ Exception: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch or parse prices.")
