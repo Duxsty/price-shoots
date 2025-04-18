@@ -18,25 +18,18 @@ async def scrape_argos_playwright(query: str) -> List[ProductResult]:
         page = await browser.new_page()
 
         search_url = f"https://www.argos.co.uk/search/{query.replace(' ', '%20')}/"
+        print(f"Navigating to: {search_url}")
         await page.goto(search_url, timeout=60000)
 
         try:
-            # Wait for the general product list container instead of individual cards
-            await page.wait_for_selector("[data-test='product-list']", timeout=15000)
-        except Exception:
-            print("⚠️ Timeout: Product list did not load.")
+            await page.wait_for_selector('[data-test="component-product-card"]', timeout=15000)
+        except Exception as e:
+            print(f"Selector wait failed: {e}")
             await browser.close()
-            return []
+            return results
 
-        # Take a screenshot for debugging (stored in the backend container)
-        await page.screenshot(path="argos_page.png", full_page=True)
-
-        # Try multiple valid selectors
-        cards = await page.query_selector_all(
-            "li[data-test='component-product-card'], div[data-test='component-product-card']"
-        )
-
-        print(f"🔎 Found {len(cards)} product cards")
+        cards = await page.query_selector_all('[data-test="component-product-card"]')
+        print(f"Found {len(cards)} product cards")
 
         for card in cards:
             try:
@@ -58,7 +51,7 @@ async def scrape_argos_playwright(query: str) -> List[ProductResult]:
                     image=image
                 ))
             except Exception as e:
-                print(f"❌ Error parsing card: {e}")
+                print(f"❌ Error parsing product card: {e}")
                 continue
 
         await browser.close()
