@@ -1,49 +1,62 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+
+from fastapi import APIRouter, HTTPException, Query
 from typing import List
-import requests
-from bs4 import BeautifulSoup
-from urllib.parse import quote
+from pydantic import BaseModel
+from playwright.async_api import async_playwright
 
 router = APIRouter()
 
-class ProductResult(BaseModel):
+class PriceSpyResult(BaseModel):
     product_name: str
     price: float
     source: str
     link: str
-    image: str = ""
+    image: str
 
-@router.get("/search-prices", response_model=List[ProductResult])
-def search_prices(query: str):
-    encoded_query = quote(query)
-    url = f"https://www.pricespy.co.uk/search?search={encoded_query}"
-    response = requests.get(url, timeout=10)
-
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to fetch Pricespy results")
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    items = soup.select("div.product-card")  # adjust this based on HTML
+async def scrape_pricespy(query: str) -> List[PriceSpyResult]:
     results = []
+    url = f"https://www.pricespy.co.uk/search?search={query.replace(' ', '+')}"
 
-    for item in items:
-        title_el = item.select_one(".product-card__heading")
-        price_el = item.select_one(".product-card__price")
-        link_el = item.select_one("a")
-        image_el = item.select_one("img")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(url, timeout=60000)
 
-        if title_el and price_el and link_el:
+        try:
+            await page.wait_for_selector("a[data-test='product-link']", timeout=15000)
+        except Exception as e:
+            print(f"⚠️ Wait timeout: {e}")
+            await browser.close()
+            return []
+
+        items = await page.query_selector_all("a[data-test='product-link']")
+
+        for item in items:
             try:
-                price = float(''.join(filter(str.isdigit, price_el.text))) / 100
-                results.append(ProductResult(
-                    product_name=title_el.text.strip(),
-                    price=price,
+                name = await item.inner_text()
+                href = await item.get_attribute("href")
+                full_url = f"https://www.pricespy.co.uk{href}"
+                results.append(PriceSpyResult(
+                    product_name=name.strip(),
+                    price=0.0,  # Placeholder
                     source="PriceSpy",
-                    link="https://www.pricespy.co.uk" + link_el.get("href", ""),
-                    image=image_el.get("src", "") if image_el else ""
+                    link=full_url,
+                    image=""
                 ))
-            except:
+            except Exception as e:
+                print(f"❌ Parsing error: {e}")
                 continue
 
+        await browser.close()
     return results
+
+@router.get("/search-pricespy", response_model=List[PriceSpyResult])
+async def search_pricespy(q: str = Query(...)):
+    try:
+        data = await scrape_pricespy(q)
+        if not data:
+            raise HTTPException(status_code=404, detail="No results found")
+        return data
+    except Exception as e:
+        print(f"❌ Exception in /search-pricespy: {e}")
+        raise HTTPException(status_code=500, detail="Internal error")
