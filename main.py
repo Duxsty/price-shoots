@@ -126,3 +126,40 @@ async def product_summary(q: str = Query(..., description="Product name")):
     except Exception as e:
         print("GPT Summary Error:", str(e))
         raise HTTPException(status_code=500, detail="Failed to generate summary.")
+
+
+
+from bs4 import BeautifulSoup
+import requests
+from urllib.parse import quote
+
+@app.get("/search-prices", response_model=List[ProductResult])
+async def search_prices(q: str = Query(..., description="Product name to search")):
+    encoded_query = quote(q)
+    url = f"https://www.currys.co.uk/search?q={encoded_query}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch data from Currys")
+
+    soup = BeautifulSoup(res.text, "html.parser")
+    items = []
+
+    for product in soup.select("li.product"):
+        name = product.select_one("h2.product-title")
+        price = product.select_one(".product-price")
+        link = product.select_one("a")
+        image = product.select_one("img")
+
+        if name and price and link:
+            items.append({
+                "product_name": name.get_text(strip=True),
+                "price": float(''.join(filter(str.isdigit, price.get_text()))[:-2] or 0),
+                "link": f"https://www.currys.co.uk{link['href']}",
+                "source": "Currys",
+                "image": image['src'] if image and image.has_attr('src') else "",
+                "rating": None
+            })
+
+    return items
