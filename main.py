@@ -53,6 +53,7 @@ def scrape_currys(query: str) -> List[ProductResult]:
     return items
 
 
+
 def scrape_argos(query: str) -> List[ProductResult]:
     encoded = quote(query)
     url = f"https://www.argos.co.uk/search/{encoded}/"
@@ -64,23 +65,23 @@ def scrape_argos(query: str) -> List[ProductResult]:
 
     soup = BeautifulSoup(res.text, "html.parser")
     items = []
-    products = soup.select("div[data-test='component-product-card']")
+    products = soup.select("li[data-test='component-product-card']")
 
     print(f"🛍️ Argos: Found {len(products)} product entries")
 
     for product in products:
         try:
-            name = product.select_one("div[data-test='component-product-card-title'] span")
-            price_el = product.select_one("strong[data-test='product-card-price']")
+            name_el = product.select_one("h2 span[data-test='product-title']")
+            price_el = product.select_one("strong[data-test='product-price']")
             link_el = product.select_one("a[data-test='component-product-card-title']")
             image_el = product.select_one("img")
 
-            if name and price_el and link_el:
+            if name_el and price_el and link_el:
                 raw_price = ''.join(filter(str.isdigit, price_el.get_text()))
                 price = float(raw_price[:-2]) if len(raw_price) > 2 else 0
 
                 items.append(ProductResult(
-                    product_name=name.get_text(strip=True),
+                    product_name=name_el.get_text(strip=True),
                     price=price,
                     link="https://www.argos.co.uk" + link_el["href"],
                     source="Argos",
