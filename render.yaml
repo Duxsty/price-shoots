@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main_combined_scraper_final:app --host 0.0.0.0 --port 10000
+    startCommand: uvicorn main_combined_scraper_debug_argos:app --host 0.0.0.0 --port 10000
     envVars:
       - key: PORT
         value: 10000
