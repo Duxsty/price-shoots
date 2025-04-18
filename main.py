@@ -52,6 +52,7 @@ def scrape_currys(query: str) -> List[ProductResult]:
             ))
     return items
 
+
 def scrape_argos(query: str) -> List[ProductResult]:
     encoded = quote(query)
     url = f"https://www.argos.co.uk/search/{encoded}/"
@@ -68,22 +69,28 @@ def scrape_argos(query: str) -> List[ProductResult]:
     print(f"🛍️ Argos: Found {len(products)} product entries")
 
     for product in products:
-        name = product.select_one("div[data-test='product-title']")
-        price_el = product.select_one("strong[data-test='product-price']")
-        link_el = product.select_one("a")
-        image_el = product.select_one("img")
+        try:
+            name = product.select_one("div[data-test='component-product-card-title'] span")
+            price_el = product.select_one("strong[data-test='product-card-price']")
+            link_el = product.select_one("a[data-test='component-product-card-title']")
+            image_el = product.select_one("img")
 
-        if name and price_el and link_el:
-            price_text = ''.join(filter(str.isdigit, price_el.get_text()))
-            price = float(price_text[:-2]) if len(price_text) > 2 else 0
-            items.append(ProductResult(
-                product_name=name.get_text(strip=True),
-                price=price,
-                link="https://www.argos.co.uk" + link_el["href"],
-                source="Argos",
-                image=image_el["src"] if image_el and image_el.has_attr("src") else "",
-                rating=None
-            ))
+            if name and price_el and link_el:
+                raw_price = ''.join(filter(str.isdigit, price_el.get_text()))
+                price = float(raw_price[:-2]) if len(raw_price) > 2 else 0
+
+                items.append(ProductResult(
+                    product_name=name.get_text(strip=True),
+                    price=price,
+                    link="https://www.argos.co.uk" + link_el["href"],
+                    source="Argos",
+                    image=image_el["src"] if image_el and image_el.has_attr("src") else "",
+                    rating=None
+                ))
+        except Exception as e:
+            print(f"❌ Failed to parse Argos product: {e}")
+            continue
+
     return items
 
 @app.get("/search-prices", response_model=List[ProductResult])
