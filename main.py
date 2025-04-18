@@ -1,14 +1,16 @@
-from fastapi import Request
-from urllib.parse import quote
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Request
+from fastapi import Query
 from pydantic import BaseModel
 from typing import List
 from bs4 import BeautifulSoup
-from urllib.parse import quote
 import requests
 import os
 
+# Import PriceSpy router
+from pricespy_scraper import router as pricespy_router
+
 app = FastAPI()
+app.include_router(pricespy_router)
 
 SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY")
 
