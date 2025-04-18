@@ -5,3 +5,4 @@ email-validator
 requests
 beautifulsoup4
 python-dotenv
+playwright
