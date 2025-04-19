@@ -1,9 +1,8 @@
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic
 email-validator
 requests
 beautifulsoup4
 python-dotenv
-playwright
 playwright==1.42.0
