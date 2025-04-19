@@ -6,7 +6,7 @@ from pricespy_scraper import router as pricespy_router
 def ensure_playwright_browser():
     try:
         subprocess.run(
-            ["playwright", "install", "chromium", "--with-deps"],
+            ["playwright", "install", "chromium"],
             check=True
         )
     except Exception as e:
