@@ -1,14 +1,11 @@
 services:
   - type: web
-    name: price-shoots
+    name: priceshoots-api
     env: python
-    plan: free
     buildCommand: |
       pip install -r requirements.txt
-      playwright install
+      playwright install --with-deps
     startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
-envVars:
-    - key: PORT
-      value: 10000
-    - key: SCRAPER_API_KEY
-      value: your_scraperapi_key_here
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: true
