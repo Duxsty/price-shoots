@@ -1,14 +1,18 @@
-import os
-import asyncio
+import subprocess
 from fastapi import FastAPI
 from pricespy_scraper import router as pricespy_router
 
-# Force Playwright to install Chromium at runtime (for Render)
-async def install_browser():
-    os.system("playwright install chromium --with-deps")
+# One-time Playwright browser install (sync call)
+def ensure_playwright_browser():
+    try:
+        subprocess.run(
+            ["playwright", "install", "chromium", "--with-deps"],
+            check=True
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to install Playwright browser: {e}")
 
-# Run installation before the app starts
-asyncio.run(install_browser())
+ensure_playwright_browser()
 
 app = FastAPI(
     title="PriceShoots API",
@@ -20,5 +24,5 @@ app = FastAPI(
 def root():
     return {"message": "API is running."}
 
-# Register PriceSpy scraper routes
+# Register routers
 app.include_router(pricespy_router)
