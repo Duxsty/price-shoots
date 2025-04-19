@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException, Query
 from typing import List
 from pydantic import BaseModel
@@ -50,13 +49,13 @@ async def scrape_pricespy(query: str) -> List[PriceSpyResult]:
         await browser.close()
     return results
 
-@router.get("/search-pricespy", response_model=List[PriceSpyResult])
-async def search_pricespy(q: str = Query(...)):
+@router.get("/search-prices", response_model=List[PriceSpyResult])
+async def search_prices(q: str = Query(...)):
     try:
         data = await scrape_pricespy(q)
         if not data:
             raise HTTPException(status_code=404, detail="No results found")
         return data
     except Exception as e:
-        print(f"❌ Exception in /search-pricespy: {e}")
+        print(f"❌ Exception in /search-prices: {e}")
         raise HTTPException(status_code=500, detail="Internal error")
