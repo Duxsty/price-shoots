@@ -1,3 +1,5 @@
+fastapi
+uvicorn[standard]
 playwright
 pydantic
 beautifulsoup4
